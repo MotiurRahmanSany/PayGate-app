@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_sslcommerz/model/SSLCSdkType.dart';
 import 'package:flutter_sslcommerz/model/SSLCommerzInitialization.dart';
 import 'package:flutter_sslcommerz/model/SSLCurrencyType.dart';
 import 'package:flutter_sslcommerz/sslcommerz.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:paygate/paygate_secrets.dart';
 import 'package:paygate/utils.dart';
 import 'package:uuid/uuid.dart';
@@ -15,9 +17,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  void payWithSSLCommerz({required double amount}) async {
-    // Implement SSLCommerz payment logic here
-    // unique uuid for each transaction
+  int payableAmount = 0;
+  final amountController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  void payWithSSLCommerz({required int amount}) async {
     final uid = Uuid().v4();
 
     try {
@@ -33,7 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
           sdkType: SSLCSdkType.TESTBOX,
           store_id: PaygateSecret.sslStoreID,
           store_passwd: PaygateSecret.sslStorePassword,
-          total_amount: amount,
+          total_amount: amount.toDouble(),
           tran_id: "TEST-TRX-$uid",
         ),
       );
@@ -80,40 +84,242 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<String?> makeStripePayment(int amount) async {
+    debugPrint("Stripe Payment Initiated");
+    // Implement Stripe payment logic here
+    final dio = Dio();
+    try {
+      var data = {
+        "amount": (amount * 100).round().toString(),
+        "currency": "usd",
+        "description": "Payment for Order",
+        "payment_method_types[]": "card",
+      };
+      debugPrint("Stripe Payment Data: $data");
+      debugPrint("Stripe Secret Key: ${PaygateSecret.stripeSecretKey}");
+      final response = await dio.post(
+        'https://api.stripe.com/v1/payment_intents',
+        data: data,
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {
+            'Authorization':
+                'Bearer ${PaygateSecret.stripeSecretKey}', // Use your Stripe secret key
+          },
+        ),
+      );
+
+      if (response.data != null) {
+        debugPrint("Stripe Payment Response: ${response.data}");
+        showDynamicSnackBar(
+          context: context,
+          message: 'Initiating Stripe Payment...',
+          type: SnackBarType.info,
+        );
+        return response.data['client_secret'];
+      } else {
+        debugPrint("Stripe Payment Failed");
+        showDynamicSnackBar(
+          context: context,
+          message: 'Stripe Payment Failed',
+          type: SnackBarType.error,
+        );
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint("Error occurred: $e");
+      showDynamicSnackBar(
+        context: context,
+        message: 'Error occurred during Stripe payment',
+        type: SnackBarType.error,
+      );
+    }
+    return null;
+  }
+
+  Future<void> payWithStipe({required int amount}) async {
+    try {
+      final clientSecret = await makeStripePayment(amount);
+      if (clientSecret == null) {
+        showDynamicSnackBar(
+          context: context,
+          message: 'Failed to create payment intent',
+          type: SnackBarType.error,
+        );
+        return;
+      }
+      debugPrint("Stripe Client Secret: $clientSecret");
+      await Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: SetupPaymentSheetParameters(
+          paymentIntentClientSecret: clientSecret,
+          merchantDisplayName: 'PayGate Merchant',
+        ),
+      );
+
+      debugPrint("Stripe Payment Sheet Initialized");
+      debugPrint("opening payment sheet");
+      await Stripe.instance.presentPaymentSheet(
+        options: PaymentSheetPresentOptions(timeout: 10),
+      );
+      await Stripe.instance.confirmPaymentSheetPayment();
+      showDynamicSnackBar(
+        context: context,
+        message: 'Payment Successful!',
+        type: SnackBarType.success,
+      );
+    } catch (e) {
+      debugPrint("Error occurred: $e");
+      if (e is StripeException) {
+        showDynamicSnackBar(
+          context: context,
+          message: 'Stripe Error: ${e.error.localizedMessage}',
+          type: SnackBarType.error,
+        );
+      } else {
+        debugPrint("Payment Sheet Error: $e");
+        showDynamicSnackBar(
+          context: context,
+          message: 'Payment Failed',
+          type: SnackBarType.error,
+        );
+      }
+    } finally {
+      debugPrint("Payment Sheet Closed");
+      // Optionally, you can reset the payment sheet here
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            ElevatedButton.icon(
-              onPressed: () {
-                // Handle payment logic here
-                payWithSSLCommerz(amount: 100.0); // Example amount
-              },
-              icon: const Icon(Icons.payment, color: Colors.white),
-              label: const Text(
-                'Pay with SSLCommerz',
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'PayGate',
                 style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.white,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
+                  color: Colors.black,
                 ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0DB14B), // SSLCommerz green
+              const SizedBox(height: 20),
+
+              // enter amount
+              Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 44,
-                  vertical: 20,
+                  horizontal: 24,
+                  vertical: 16,
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                child: TextFormField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter an amount';
+                    }
+                    if (int.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
+                  style: const TextStyle(fontSize: 16),
+                  decoration: InputDecoration(
+                    labelText: 'Payment Amount',
+                    hintText: 'Enter payment amount',
+                    prefixIcon: const Icon(
+                      Icons.attach_money,
+                      color: Color(0xFF635BFF),
+                    ),
+                    suffixText: 'USD',
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF635BFF),
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                  ),
                 ),
-                elevation: 5,
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+
+              ElevatedButton.icon(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    // Validate the form and get the amount
+                    payWithSSLCommerz(amount: int.parse(amountController.text));
+                  }
+                },
+                icon: const Icon(Icons.payment, color: Colors.white),
+                label: const Text(
+                  'Pay with SSLCommerz',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0DB14B), // SSLCommerz green
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 44,
+                    vertical: 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  elevation: 5,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  if (_formKey.currentState!.validate()) {
+                    // Validate the form and get the amount
+                    await payWithStipe(
+                      amount: int.parse(amountController.text),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.credit_card, color: Colors.white),
+                label: const Text(
+                  'Pay with Stripe',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF635BFF), // Stripe purple
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 44,
+                    vertical: 20,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30), // More rounded
+                  ),
+                  elevation: 8,
+                  shadowColor: Colors.purpleAccent.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

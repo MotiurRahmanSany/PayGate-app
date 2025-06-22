@@ -3,3 +3,6 @@
 -dontwarn com.stripe.android.pushProvisioning.PushProvisioningActivityStarter$Error
 -dontwarn com.stripe.android.pushProvisioning.PushProvisioningActivityStarter
 -dontwarn com.stripe.android.pushProvisioning.PushProvisioningEphemeralKeyProvider
+-dontwarn com.google.android.gms.auth.api.phone.SmsRetriever
+-dontwarn com.google.android.gms.auth.api.phone.SmsRetrieverClient
+-dontwarn com.sslwireless.sslcommerz.FlutterSslcommerzPlugin

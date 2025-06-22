@@ -43,7 +43,7 @@ This project demonstrates how to implement payment processing in Flutter applica
    STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
    STRIPE_SECRET_KEY=your_stripe_secret_key
    ```
-
+   or you can use the provided `.env.example` file as a template. Just copy it to `.env` and fill in your credentials.
 3. Install dependencies
 
    ```

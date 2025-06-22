@@ -5,6 +5,7 @@ import 'package:flutter_sslcommerz/model/SSLCommerzInitialization.dart';
 import 'package:flutter_sslcommerz/model/SSLCurrencyType.dart';
 import 'package:flutter_sslcommerz/sslcommerz.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:paygate/constants.dart';
 import 'package:paygate/paygate_secrets.dart';
 import 'package:paygate/utils.dart';
 import 'package:uuid/uuid.dart';
@@ -98,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       debugPrint("Stripe Payment Data: $data");
       debugPrint("Stripe Secret Key: ${PaygateSecret.stripeSecretKey}");
       final response = await dio.post(
-        'https://api.stripe.com/v1/payment_intents',
+        Constants.stripePaymentIntentsUrl,
         data: data,
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
@@ -207,6 +208,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.black,
                 ),
               ),
+              const SizedBox(height: 10),
+              const Text('Your one-stop payment solution'),
               const SizedBox(height: 20),
 
               // enter amount
